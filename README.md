@@ -2,7 +2,9 @@
 
 > **Mata Kuliah**: Pemrograman Internet of Things (SIF1502)  
 > **Program Studi**: Sistem Informasi — UNISKA Banjarmasin  
-> **Dosen**: Ahmadi, M.Kom
+> **Nama**  : Akhmad Sugati Wijayanto  
+> **NPM**   : 2410020149 
+> **Kelas** : 5 F Sistem Informasi
 
 ---
 
