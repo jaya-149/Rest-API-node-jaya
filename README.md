@@ -9,7 +9,7 @@
 ## 📁 Struktur File
 
 ```
-iot-rest-api/
+iot-rest-api-jaya/
 ├── simulasi_esp32.py     ← Simulator sensor (jalankan via terminal)
 ├── flow_nodered.json     ← Flow Node-RED (import ke Node-RED)
 ├── dashboard.html        ← Web Dashboard (buka di browser)
