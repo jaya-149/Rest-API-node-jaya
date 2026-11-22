@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IoT Dashboard — SIF1502</title>
+
+  <!-- Chart.js (grafik real-time) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+  <style>
+    /* ─── RESET & VARIABEL ──────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg        : #0d1117;
+      --surface   : #161b22;
+      --surface2  : #21262d;
+      --border    : #30363d;
+      --text      : #e6edf3;
+      --muted     : #8b949e;
+      --accent    : #58a6ff;
+      --teal      : #39d353;
+      --red       : #f85149;
+      --orange    : #d29922;
+      --purple    : #bc8cff;
+      --radius    : 10px;
+      --shadow    : 0 4px 24px rgba(0,0,0,.45);
+      font-family : 'Segoe UI', system-ui, sans-serif;
+    }
+
+    body {
+      background : var(--bg);
+      color      : var(--text);
+      min-height : 100vh;
+      padding    : 24px 20px 48px;
+    }
+
+    /* ─── HEADER ────────────────────────────────────────────── */
+    .header {
+      max-width  : 1100px;
+      margin     : 0 auto 28px;
+      display    : flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap  : wrap;
+      gap        : 12px;
+    }
+
+    .header-left h1 {
+      font-size  : 1.5rem;
+      font-weight: 600;
+      letter-spacing: -.3px;
+    }
+
+    .header-left p {
+      font-size  : .8rem;
+      color      : var(--muted);
+      margin-top : 2px;
+    }
+
+    .pill {
+      display    : inline-flex;
+      align-items: center;
+      gap        : 6px;
+      padding    : 5px 12px;
+      border-radius: 20px;
+      font-size  : .78rem;
+      font-weight: 600;
+      border     : 1px solid var(--border);
+      background : var(--surface2);
+    }
+
+    .dot {
+      width : 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+
+    .pill.online .dot { background: var(--teal); box-shadow: 0 0 6px var(--teal); }
+    .pill.offline .dot { background: var(--red); }
+    .pill.alert .dot  { background: var(--orange); box-shadow: 0 0 6px var(--orange); }
+
+    /* ─── API KEY BANNER ────────────────────────────────────── */
+    .api-banner {
+      max-width  : 1100px;
+      margin     : 0 auto 20px;
+      background : var(--surface);
+      border     : 1px solid var(--border);
+      border-radius: var(--radius);
+      padding    : 14px 18px;
+      display    : flex;
+      align-items: center;
+      gap        : 12px;
+      flex-wrap  : wrap;
+    }
+
+    .api-banner label {
+      font-size  : .8rem;
+      color      : var(--muted);
+      white-space: nowrap;
+    }
+
+    .api-banner input {
+      flex       : 1;
+      min-width  : 220px;
+      background : var(--surface2);
+      border     : 1px solid var(--border);
+      border-radius: 6px;
+      color      : var(--text);
+      padding    : 7px 12px;
+      font-size  : .85rem;
+      font-family: monospace;
+    }
+
+    .api-banner input:focus { outline: 2px solid var(--accent); }
+
+    .btn-sm {
+      padding    : 7px 16px;
+      border     : none;
+      border-radius: 6px;
+      font-size  : .82rem;
+      font-weight: 600;
+      cursor     : pointer;
+      transition : opacity .15s;
+    }
+
+    .btn-sm:hover { opacity: .85; }
+    .btn-sm.primary  { background: var(--accent); color: #0d1117; }
+    .btn-sm.danger   { background: var(--red);    color: #fff; }
+    .btn-sm.success  { background: var(--teal);   color: #0d1117; }
+    .btn-sm.warning  { background: var(--orange); color: #0d1117; }
+
+    /* ─── GRID UTAMA ────────────────────────────────────────── */
+    .main {
+      max-width: 1100px;
+      margin   : 0 auto;
+      display  : grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap      : 16px;
+    }
+
+    /* ─── CARD DASAR ────────────────────────────────────────── */
+    .card {
+      background   : var(--surface);
+      border       : 1px solid var(--border);
+      border-radius: var(--radius);
+      padding      : 20px;
+      box-shadow   : var(--shadow);
+    }
+
+    .card-title {
+      font-size  : .72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .8px;
+      color      : var(--muted);
+      margin-bottom: 10px;
+    }
+
+    /* ─── KARTU METRIK ──────────────────────────────────────── */
+    .metric-card { grid-column: span 4; text-align: center; }
+
+    .metric-value {
+      font-size  : 3.2rem;
+      font-weight: 700;
+      line-height: 1;
+      margin     : 8px 0 4px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .metric-unit  { font-size: 1rem; color: var(--muted); }
+    .metric-sub   { font-size: .75rem; color: var(--muted); margin-top: 6px; }
+
+    .metric-suhu      .metric-value { color: var(--red);    }
+    .metric-kelembaban .metric-value { color: var(--accent); }
+    .metric-status    .metric-value { font-size: 1.1rem; }
+
+    .alert-bar {
+      display    : none;
+      margin-top : 8px;
+      padding    : 5px 10px;
+      background : rgba(242,124,54,.15);
+      border     : 1px solid var(--orange);
+      border-radius: 6px;
+      font-size  : .75rem;
+      color      : var(--orange);
+    }
+
+    /* ─── THRESHOLD PANEL ───────────────────────────────────── */
+    .threshold-card { grid-column: span 4; }
+
+    .threshold-row {
+      display    : flex;
+      align-items: center;
+      gap        : 10px;
+      margin-top : 10px;
+    }
+
+    .threshold-row input[type="number"] {
+      width      : 90px;
+      background : var(--surface2);
+      border     : 1px solid var(--border);
+      border-radius: 6px;
+      color      : var(--text);
+      padding    : 7px 10px;
+      font-size  : .9rem;
+    }
+
+    .threshold-current {
+      margin-top : 10px;
+      font-size  : .82rem;
+      color      : var(--muted);
+    }
+
+    .threshold-current span { color: var(--orange); font-weight: 700; }
+
+    /* ─── KONTROL PANEL ─────────────────────────────────────── */
+    .control-card { grid-column: span 4; }
+
+    .btn-row {
+      display    : flex;
+      flex-wrap  : wrap;
+      gap        : 8px;
+      margin-top : 10px;
+    }
+
+    .btn-ctrl {
+      flex       : 1;
+      min-width  : 100px;
+      padding    : 11px 10px;
+      border     : none;
+      border-radius: 8px;
+      font-size  : .88rem;
+      font-weight: 600;
+      cursor     : pointer;
+      transition : all .15s;
+    }
+
+    .btn-ctrl:hover { filter: brightness(1.15); transform: translateY(-1px); }
+    .btn-ctrl:active { transform: translateY(0); }
+
+    .btn-on   { background: var(--teal);   color: #0d1117; }
+    .btn-off  { background: var(--red);    color: #fff;    }
+    .btn-fan  { background: var(--purple); color: #0d1117; }
+
+    /* ─── GRAFIK ────────────────────────────────────────────── */
+    .chart-card { grid-column: span 8; }
+    .chart-wrap { position: relative; height: 220px; }
+
+    /* ─── HISTORY TABLE ─────────────────────────────────────── */
+    .table-card { grid-column: span 4; }
+
+    .tbl-wrap { overflow-y: auto; max-height: 240px; }
+
+    table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+
+    thead th {
+      padding    : 6px 8px;
+      text-align : left;
+      font-weight: 600;
+      color      : var(--muted);
+      border-bottom: 1px solid var(--border);
+      position   : sticky;
+      top        : 0;
+      background : var(--surface);
+    }
+
+    tbody td { padding: 7px 8px; border-bottom: 1px solid rgba(48,54,61,.5); }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover td { background: var(--surface2); }
+
+    .td-suhu  { color: var(--red);    font-weight: 600; }
+    .td-hum   { color: var(--accent); font-weight: 600; }
+
+    /* ─── LOG ───────────────────────────────────────────────── */
+    .log-card { grid-column: span 12; }
+
+    .log-box {
+      background : #010409;
+      border     : 1px solid var(--border);
+      border-radius: 7px;
+      padding    : 12px;
+      max-height : 170px;
+      overflow-y : auto;
+      font-family: 'Cascadia Code', 'Consolas', monospace;
+      font-size  : .78rem;
+      line-height: 1.65;
+    }
+
+    .log-info  { color: var(--accent); }
+    .log-ok    { color: var(--teal);   }
+    .log-warn  { color: var(--orange); }
+    .log-error { color: var(--red);    }
+    .log-muted { color: var(--muted);  }
+
+    /* ─── TOAST NOTIFIKASI ──────────────────────────────────── */
+    #toast-container {
+      position   : fixed;
+      top        : 20px;
+      right      : 20px;
+      display    : flex;
+      flex-direction: column;
+      gap        : 8px;
+      z-index    : 9999;
+    }
+
+    .toast {
+      padding    : 12px 18px;
+      border-radius: 8px;
+      font-size  : .85rem;
+      font-weight: 600;
+      max-width  : 320px;
+      animation  : slideIn .25s ease;
+      box-shadow : 0 4px 20px rgba(0,0,0,.5);
+    }
+
+    .toast.alert { background: #d29922; color: #0d1117; }
+    .toast.ok    { background: #39d353; color: #0d1117; }
+    .toast.err   { background: #f85149; color: #fff;    }
+
+    @keyframes slideIn {
+      from { transform: translateX(120%); opacity: 0; }
+      to   { transform: translateX(0);   opacity: 1; }
+    }
+
+    /* ─── WS BADGE ──────────────────────────────────────────── */
+    .ws-badge {
+      font-size  : .72rem;
+      padding    : 3px 8px;
+      border-radius: 4px;
+      border     : 1px solid var(--border);
+      color      : var(--muted);
+    }
+
+    .ws-badge.connected { color: var(--teal); border-color: var(--teal); }
+
+    /* ─── RESPONSIVE ────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .metric-card, .threshold-card, .control-card { grid-column: span 12; }
+      .chart-card, .table-card { grid-column: span 12; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Toast container -->
+<div id="toast-container"></div>
+
+<!-- ─── HEADER ──────────────────────────────────────────────── -->
+<div class="header">
+  <div class="header-left">
+    <h1>⚡ IoT Dashboard</h1>
+    <p>Pemrograman Internet of Things — SIF1502 | UNISKA Banjarmasin</p>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+    <span class="pill offline" id="status-pill">
+      <span class="dot"></span>
+      <span id="status-text">Offline</span>
+    </span>
+    <span class="ws-badge" id="ws-badge">WS: —</span>
+  </div>
+</div>
+
+<!-- ─── API KEY BANNER ──────────────────────────────────────── -->
+<div class="api-banner">
+  <label>🔑 X-API-Key:</label>
+  <input type="text" id="api-key-input" placeholder="Masukkan API Key…" value="iot-secret-2024" />
+  <button class="btn-sm primary" onclick="applyApiKey()">Terapkan</button>
+  <button class="btn-sm" onclick="toggleKeyVisibility()" id="btn-toggle-key" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);">👁 Tampilkan</button>
+  <span id="auth-status" style="font-size:.78rem;color:var(--muted);">Belum diverifikasi</span>
+</div>
+
+<!-- ─── MAIN GRID ────────────────────────────────────────────── -->
+<div class="main">
+
+  <!-- Kartu Suhu -->
+  <div class="card metric-card metric-suhu">
+    <div class="card-title">Suhu Ruangan</div>
+    <div class="metric-value" id="val-suhu">--</div>
+    <div class="metric-unit">°C</div>
+    <div class="metric-sub" id="sub-suhu">Menunggu data…</div>
+    <div class="alert-bar" id="alert-suhu">🔥 Melewati batas threshold!</div>
+  </div>
+
+  <!-- Kartu Kelembaban -->
+  <div class="card metric-card metric-kelembaban">
+    <div class="card-title">Kelembaban</div>
+    <div class="metric-value" id="val-hum">--</div>
+    <div class="metric-unit">%</div>
+    <div class="metric-sub" id="sub-hum">Menunggu data…</div>
+  </div>
+
+  <!-- Kartu Status -->
+  <div class="card metric-card metric-status">
+    <div class="card-title">Status Perangkat</div>
+    <div class="metric-value" id="val-led">--</div>
+    <div class="metric-sub" id="sub-time">--</div>
+    <div class="metric-sub" id="sub-upd" style="margin-top:4px;">--</div>
+  </div>
+
+  <!-- Threshold -->
+  <div class="card threshold-card">
+    <div class="card-title">⚠️ Batas Suhu (Threshold)</div>
+    <div class="threshold-row">
+      <input type="number" id="threshold-input" min="0" max="100" step="0.5" placeholder="cth. 30" />
+      <span style="color:var(--muted);font-size:.85rem;">°C</span>
+      <button class="btn-sm warning" onclick="setThreshold()">Set</button>
+      <button class="btn-sm" onclick="clearThreshold()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);">Hapus</button>
+    </div>
+    <div class="threshold-current" id="threshold-display">
+      Threshold aktif: <span>Belum disetel</span>
+    </div>
+    <div style="font-size:.73rem;color:var(--muted);margin-top:8px;line-height:1.5;">
+      Notifikasi dikirim via WebSocket & MQTT ketika suhu melebihi batas ini.
+    </div>
+  </div>
+
+  <!-- Kontrol Perangkat -->
+  <div class="card control-card">
+    <div class="card-title">🎛️ Kontrol Perangkat</div>
+    <div class="btn-row">
+      <button class="btn-ctrl btn-on"  onclick="kirimKontrol('lamp','on')">💡 Lampu ON</button>
+      <button class="btn-ctrl btn-off" onclick="kirimKontrol('lamp','off')">💡 Lampu OFF</button>
+    </div>
+    <div class="btn-row" style="margin-top:8px;">
+      <button class="btn-ctrl btn-fan" onclick="kirimKontrol('fan','on')">🌀 Kipas ON</button>
+      <button class="btn-ctrl btn-off" onclick="kirimKontrol('fan','off')">🌀 Kipas OFF</button>
+    </div>
+  </div>
+
+  <!-- Grafik Real-time -->
+  <div class="card chart-card">
+    <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+      <span>📈 Grafik Real-time</span>
+      <button class="btn-sm" onclick="clearChart()" style="background:var(--surface2);color:var(--muted);border:1px solid var(--border);">Reset</button>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="chart-sensor"></canvas>
+    </div>
+  </div>
+
+  <!-- Tabel History -->
+  <div class="card table-card">
+    <div class="card-title">📋 History Terbaru</div>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Waktu</th>
+            <th>Suhu</th>
+            <th>Hum</th>
+          </tr>
+        </thead>
+        <tbody id="tbody-history">
+          <tr><td colspan="3" style="text-align:center;color:var(--muted);padding:16px;">Memuat…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Log Aktivitas -->
+  <div class="card log-card">
+    <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+      <span>🖥️ Log Aktivitas</span>
+      <button class="btn-sm" onclick="clearLog()" style="background:var(--surface2);color:var(--muted);border:1px solid var(--border);">Bersihkan</button>
+    </div>
+    <div class="log-box" id="log-box"></div>
+  </div>
+
+</div><!-- /main -->
+
+<!-- ─── SCRIPT ───────────────────────────────────────────────── -->
+<script>
+/* ============================================================
+   KONFIGURASI
+============================================================ */
+const CFG = {
+  apiBase  : 'http://localhost:1880/api',
+  wsUrl    : 'ws://localhost:1880/ws/iot',
+  pollSuhu : 3000,   // ms — polling GET /api/suhu
+  pollHist : 6000,   // ms — polling GET /api/history
+};
+
+let apiKey     = 'iot-secret-2024';
+let wsConn     = null;
+let wsRetries  = 0;
+let isOnline   = false;
+
+/* ============================================================
+   HEADERS
+============================================================ */
+function authHeaders(extra = {}) {
+  return {
+    'Content-Type' : 'application/json',
+    'X-API-Key'    : apiKey,
+    ...extra,
+  };
+}
+
+/* ============================================================
+   LOG
+============================================================ */
+function log(msg, type = 'info') {
+  const box  = document.getElementById('log-box');
+  const time = new Date().toLocaleTimeString('id-ID');
+  const cls  = { info: 'log-info', ok: 'log-ok', warn: 'log-warn', error: 'log-error', muted: 'log-muted' }[type] || 'log-info';
+  const el   = document.createElement('div');
+  el.className = cls;
+  el.textContent = `[${time}] ${msg}`;
+  box.appendChild(el);
+  box.scrollTop = box.scrollHeight;
+}
+
+function clearLog() {
+  document.getElementById('log-box').innerHTML = '';
+  log('Log dibersihkan.', 'muted');
+}
+
+/* ============================================================
+   TOAST
+============================================================ */
+function showToast(msg, type = 'ok') {
+  const c    = document.getElementById('toast-container');
+  const el   = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  c.appendChild(el);
+  setTimeout(() => el.remove(), 4500);
+}
+
+/* ============================================================
+   STATUS BADGE
+============================================================ */
+function setStatus(online, alert = false) {
+  isOnline = online;
+  const pill = document.getElementById('status-pill');
+  const txt  = document.getElementById('status-text');
+  pill.className = 'pill ' + (alert ? 'alert' : (online ? 'online' : 'offline'));
+  txt.textContent = alert ? '⚠ ALERT' : (online ? 'Online' : 'Offline');
+}
+
+/* ============================================================
+   API KEY
+============================================================ */
+function applyApiKey() {
+  const val = document.getElementById('api-key-input').value.trim();
+  if (!val) { showToast('API key tidak boleh kosong!', 'err'); return; }
+  apiKey = val;
+  document.getElementById('auth-status').textContent = 'Key diterapkan — menguji…';
+  log(`API Key diperbarui: ${apiKey.slice(0,4)}${'*'.repeat(Math.max(0,apiKey.length-4))}`, 'info');
+  fetchSuhu();
+}
+
+function toggleKeyVisibility() {
+  const inp = document.getElementById('api-key-input');
+  const btn = document.getElementById('btn-toggle-key');
+  if (inp.type === 'password') {
+    inp.type = 'text';
+    btn.textContent = '🙈 Sembunyikan';
+  } else {
+    inp.type = 'password';
+    btn.textContent = '👁 Tampilkan';
+  }
+}
+
+/* ============================================================
+   GRAFIK CHART.JS
+============================================================ */
+const MAX_POINTS = 25;
+const labels  = [];
+const dataSuhu = [];
+const dataHum  = [];
+
+const ctx = document.getElementById('chart-sensor').getContext('2d');
+const chart = new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels,
+    datasets: [
+      {
+        label      : 'Suhu (°C)',
+        data       : dataSuhu,
+        borderColor: '#f85149',
+        backgroundColor: 'rgba(248,81,73,.1)',
+        tension    : 0.4,
+        fill       : true,
+        pointRadius: 3,
+        pointHoverRadius: 5,
+        yAxisID    : 'ySuhu',
+      },
+      {
+        label      : 'Kelembaban (%)',
+        data       : dataHum,
+        borderColor: '#58a6ff',
+        backgroundColor: 'rgba(88,166,255,.08)',
+        tension    : 0.4,
+        fill       : true,
+        pointRadius: 3,
+        pointHoverRadius: 5,
+        yAxisID    : 'yHum',
+      },
+    ],
+  },
+  options: {
+    animation    : { duration: 400 },
+    responsive   : true,
+    maintainAspectRatio: false,
+    interaction  : { mode: 'index', intersect: false },
+    plugins: {
+      legend : { labels: { color: '#8b949e', font: { size: 11 } } },
+      tooltip: { backgroundColor: '#161b22', borderColor: '#30363d', borderWidth: 1,
+                 titleColor: '#e6edf3', bodyColor: '#8b949e' },
+    },
+    scales: {
+      x: {
+        ticks : { color: '#8b949e', font: { size: 10 }, maxTicksLimit: 8 },
+        grid  : { color: 'rgba(48,54,61,.5)' },
+      },
+      ySuhu: {
+        type    : 'linear',
+        position: 'left',
+        ticks   : { color: '#f85149', font: { size: 10 } },
+        grid    : { color: 'rgba(48,54,61,.5)' },
+        title   : { display: true, text: '°C', color: '#f85149', font: { size: 10 } },
+      },
+      yHum: {
+        type    : 'linear',
+        position: 'right',
+        ticks   : { color: '#58a6ff', font: { size: 10 } },
+        grid    : { drawOnChartArea: false },
+        title   : { display: true, text: '%', color: '#58a6ff', font: { size: 10 } },
+      },
+    },
+  },
+});
+
+function pushChart(suhu, kelembaban, waktu) {
+  labels.push(waktu);
+  dataSuhu.push(suhu);
+  dataHum.push(kelembaban);
+  if (labels.length > MAX_POINTS) {
+    labels.shift();
+    dataSuhu.shift();
+    dataHum.shift();
+  }
+  chart.update('none');
+}
+
+function clearChart() {
+  labels.length = 0;
+  dataSuhu.length = 0;
+  dataHum.length = 0;
+  chart.update();
+  log('Grafik direset.', 'muted');
+}
+
+/* ============================================================
+   FETCH DATA SENSOR — GET /api/suhu
+============================================================ */
+async function fetchSuhu() {
+  try {
+    const res  = await fetch(`${CFG.apiBase}/suhu`, { headers: authHeaders() });
+
+    if (res.status === 401) {
+      document.getElementById('auth-status').textContent = '❌ Unauthorized — API key salah';
+      log('Auth gagal: API key ditolak server.', 'error');
+      showToast('API Key ditolak! Periksa kembali.', 'err');
+      setStatus(false);
+      return;
+    }
+
+    const json = await res.json();
+    document.getElementById('auth-status').textContent = '✅ Terautentikasi';
+
+    if (json.status === 'success' && json.data.suhu !== null) {
+      const d = json.data;
+
+      // Update kartu
+      document.getElementById('val-suhu').textContent = d.suhu.toFixed(1);
+      document.getElementById('val-hum').textContent  = d.kelembaban.toFixed(0);
+      document.getElementById('val-led').textContent  = d.led || '—';
+
+      const tDt  = new Date(d.timestamp).toLocaleTimeString('id-ID');
+      const tRcv = new Date(d.received).toLocaleTimeString('id-ID');
+      document.getElementById('sub-suhu').textContent = `Diperbarui: ${tDt}`;
+      document.getElementById('sub-hum').textContent  = `Diperbarui: ${tDt}`;
+      document.getElementById('sub-time').textContent = `ESP32: ${tDt}`;
+      document.getElementById('sub-upd').textContent  = `Server terima: ${tRcv}`;
+
+      // Alert threshold
+      const alertBar = document.getElementById('alert-suhu');
+      if (json.alert) {
+        alertBar.style.display = 'block';
+        setStatus(true, true);
+      } else {
+        alertBar.style.display = 'none';
+        setStatus(true, false);
+      }
+
+      // Grafik
+      pushChart(d.suhu, d.kelembaban, tDt);
+
+    } else {
+      setStatus(false);
+    }
+  } catch (err) {
+    log(`fetchSuhu error: ${err.message}`, 'error');
+    setStatus(false);
+  }
+}
+
+/* ============================================================
+   FETCH HISTORY — GET /api/history
+============================================================ */
+async function fetchHistory() {
+  try {
+    const res  = await fetch(`${CFG.apiBase}/history?limit=15`, { headers: authHeaders() });
+    if (!res.ok) return;
+    const json = await res.json();
+    const tbody = document.getElementById('tbody-history');
+
+    if (!json.data || json.data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:14px;">Belum ada data</td></tr>';
+      return;
+    }
+
+    const rows = json.data.slice().reverse().slice(0, 15).map(d => {
+      const t = new Date(d.received).toLocaleTimeString('id-ID');
+      return `<tr>
+        <td>${t}</td>
+        <td class="td-suhu">${d.suhu.toFixed(1)}°</td>
+        <td class="td-hum">${d.kelembaban.toFixed(0)}%</td>
+      </tr>`;
+    }).join('');
+
+    tbody.innerHTML = rows;
+  } catch (err) {
+    log(`fetchHistory error: ${err.message}`, 'error');
+  }
+}
+
+/* ============================================================
+   KIRIM KONTROL — POST /api/kontrol
+============================================================ */
+async function kirimKontrol(device, action) {
+  try {
+    log(`Mengirim kontrol: ${device} → ${action}`, 'info');
+    const res  = await fetch(`${CFG.apiBase}/kontrol`, {
+      method  : 'POST',
+      headers : authHeaders(),
+      body    : JSON.stringify({ device, action }),
+    });
+    const json = await res.json();
+
+    if (json.status === 'success') {
+      log(`✓ Kontrol berhasil: ${device} = ${action}`, 'ok');
+      showToast(`✓ ${device} → ${action}`, 'ok');
+    } else {
+      log(`✗ Gagal kontrol: ${json.message}`, 'error');
+      showToast(`Gagal: ${json.message}`, 'err');
+    }
+  } catch (err) {
+    log(`kirimKontrol error: ${err.message}`, 'error');
+    showToast('Koneksi gagal!', 'err');
+  }
+}
+
+/* ============================================================
+   SET THRESHOLD — PUT /api/threshold
+============================================================ */
+async function setThreshold() {
+  const val = parseFloat(document.getElementById('threshold-input').value);
+  if (isNaN(val) || val < 0 || val > 100) {
+    showToast('Masukkan nilai threshold yang valid (0–100)!', 'err');
+    return;
+  }
+  try {
+    const res  = await fetch(`${CFG.apiBase}/threshold`, {
+      method  : 'PUT',
+      headers : authHeaders(),
+      body    : JSON.stringify({ threshold: val }),
+    });
+    const json = await res.json();
+    if (json.status === 'success') {
+      log(`⚠ Threshold disetel ke ${val}°C`, 'warn');
+      showToast(`Threshold: ${val}°C`, 'alert');
+      updateThresholdDisplay(val);
+    }
+  } catch (err) {
+    log(`setThreshold error: ${err.message}`, 'error');
+  }
+}
+
+async function clearThreshold() {
+  try {
+    const res  = await fetch(`${CFG.apiBase}/threshold`, {
+      method  : 'PUT',
+      headers : authHeaders(),
+      body    : JSON.stringify({ threshold: 999 }), // nilai sangat tinggi = nonaktif efektif
+    });
+    document.getElementById('threshold-input').value = '';
+    updateThresholdDisplay(null);
+    log('Threshold dihapus.', 'muted');
+    showToast('Threshold dihapus.', 'ok');
+  } catch (err) {
+    log(`clearThreshold error: ${err.message}`, 'error');
+  }
+}
+
+function updateThresholdDisplay(val) {
+  const el = document.getElementById('threshold-display');
+  if (val === null || val >= 999) {
+    el.innerHTML = 'Threshold aktif: <span>Belum disetel</span>';
+  } else {
+    el.innerHTML = `Threshold aktif: <span>${val}°C</span>`;
+  }
+}
+
+/* ============================================================
+   GET THRESHOLD saat load
+============================================================ */
+async function fetchThreshold() {
+  try {
+    const res  = await fetch(`${CFG.apiBase}/threshold`, { headers: authHeaders() });
+    if (!res.ok) return;
+    const json = await res.json();
+    if (json.threshold !== null && json.threshold < 999) {
+      updateThresholdDisplay(json.threshold);
+      document.getElementById('threshold-input').value = json.threshold;
+    }
+  } catch (_) {}
+}
+
+/* ============================================================
+   WEBSOCKET — real-time update tanpa polling
+============================================================ */
+function connectWS() {
+  if (wsConn && wsConn.readyState === WebSocket.OPEN) return;
+
+  log(`Menghubungkan WebSocket ke ${CFG.wsUrl} …`, 'muted');
+  wsConn = new WebSocket(CFG.wsUrl);
+
+  wsConn.onopen = () => {
+    wsRetries = 0;
+    log('WebSocket terhubung ✓', 'ok');
+    document.getElementById('ws-badge').textContent = 'WS: Terhubung';
+    document.getElementById('ws-badge').className   = 'ws-badge connected';
+  };
+
+  wsConn.onmessage = (e) => {
+    try {
+      const payload = JSON.parse(e.data);
+
+      if (payload.type === 'sensor_update') {
+        const d = payload.data;
+        // Update tampilan langsung via WS (lebih cepat dari polling)
+        document.getElementById('val-suhu').textContent = d.suhu.toFixed(1);
+        document.getElementById('val-hum').textContent  = d.kelembaban.toFixed(0);
+        const t = new Date(d.timestamp).toLocaleTimeString('id-ID');
+        document.getElementById('sub-suhu').textContent = `WS: ${t}`;
+        pushChart(d.suhu, d.kelembaban, t);
+        log(`WS: suhu=${d.suhu}°C hum=${d.kelembaban}%`, 'muted');
+      }
+
+      if (payload.type === 'threshold_alert') {
+        log(`🔥 ALERT: Suhu ${payload.suhu}°C melebihi batas ${payload.threshold}°C!`, 'warn');
+        showToast(`🔥 Suhu ${payload.suhu}°C melewati batas ${payload.threshold}°C!`, 'alert');
+        setStatus(true, true);
+      }
+    } catch (_) {}
+  };
+
+  wsConn.onclose = () => {
+    document.getElementById('ws-badge').textContent = 'WS: Terputus';
+    document.getElementById('ws-badge').className   = 'ws-badge';
+    // Reconnect dengan backoff eksponensial
+    wsRetries++;
+    const delay = Math.min(2000 * wsRetries, 30000);
+    log(`WebSocket terputus. Reconnect dalam ${delay/1000}s…`, 'warn');
+    setTimeout(connectWS, delay);
+  };
+
+  wsConn.onerror = () => {
+    log('WebSocket error — pastikan Node-RED berjalan.', 'error');
+  };
+}
+
+/* ============================================================
+   INIT
+============================================================ */
+log('Dashboard dimulai.', 'ok');
+log(`API Base: ${CFG.apiBase}`, 'muted');
+
+// Ambil data pertama kali
+fetchSuhu();
+fetchHistory();
+fetchThreshold();
+
+// WebSocket
+connectWS();
+
+// Polling sebagai fallback (WS lebih diutamakan)
+setInterval(fetchSuhu,    CFG.pollSuhu);
+setInterval(fetchHistory, CFG.pollHist);
+</script>
+</body>
+</html>

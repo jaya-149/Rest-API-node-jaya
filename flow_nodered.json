@@ -1,0 +1,491 @@
+[
+  {
+    "id": "tab_iot_api",
+    "type": "tab",
+    "label": "IoT REST API",
+    "disabled": false,
+    "info": "Backend REST API untuk sistem monitoring IoT\nEndpoint: /api/suhu, /api/history, /api/kontrol, /api/threshold\nAuth: X-API-Key header"
+  },
+
+  {
+    "id": "mqtt_broker_cfg",
+    "type": "mqtt-broker",
+    "name": "Local Mosquitto",
+    "broker": "localhost",
+    "port": "1883",
+    "clientid": "node-red-backend",
+    "autoConnect": true,
+    "usetls": false,
+    "protocolVersion": "4"
+  },
+
+  {
+    "id": "node_comment_mqtt",
+    "type": "comment",
+    "z": "tab_iot_api",
+    "name": "=== MQTT: Terima & Simpan Data Sensor ===",
+    "info": "",
+    "x": 200,
+    "y": 40,
+    "wires": []
+  },
+
+  {
+    "id": "mqtt_sensor_in",
+    "type": "mqtt in",
+    "z": "tab_iot_api",
+    "name": "Subscribe iot/sensor",
+    "topic": "iot/sensor",
+    "qos": "0",
+    "datatype": "json",
+    "broker": "mqtt_broker_cfg",
+    "x": 160,
+    "y": 100,
+    "wires": [["fn_simpan_sensor"]]
+  },
+
+  {
+    "id": "fn_simpan_sensor",
+    "type": "function",
+    "z": "tab_iot_api",
+    "name": "Simpan & Cek Threshold",
+    "func": "var data = msg.payload;\ndata.received = new Date().toISOString();\n\n// Simpan data terakhir\nflow.set('lastSensor', data);\n\n// Simpan history (maks 50)\nvar history = flow.get('history') || [];\nhistory.push(data);\nif (history.length > 50) history.shift();\nflow.set('history', history);\n\n// === CEK THRESHOLD ===\nvar threshold = flow.get('threshold') || null;\nvar notifMsg = null;\n\nif (threshold !== null && data.suhu > threshold) {\n    var lastNotif = flow.get('lastNotifTime') || 0;\n    var now = Date.now();\n    // Throttle notifikasi: minimal 10 detik antara notifikasi\n    if (now - lastNotif > 10000) {\n        flow.set('lastNotifTime', now);\n        notifMsg = {\n            payload: {\n                type: 'threshold_alert',\n                message: 'PERINGATAN: Suhu melewati batas!',\n                suhu: data.suhu,\n                threshold: threshold,\n                timestamp: data.received\n            },\n            topic: 'threshold'\n        };\n    }\n}\n\n// Kirim ke WebSocket output\nvar wsMsg = { payload: JSON.stringify({\n    type: 'sensor_update',\n    data: data\n})};\n\nreturn [msg, wsMsg, notifMsg];\n",
+    "outputs": 3,
+    "x": 420,
+    "y": 100,
+    "wires": [
+      ["debug_sensor"],
+      ["ws_broadcast"],
+      ["ws_notif", "mqtt_notif_out"]
+    ]
+  },
+
+  {
+    "id": "debug_sensor",
+    "type": "debug",
+    "z": "tab_iot_api",
+    "name": "Log Sensor",
+    "active": true,
+    "complete": "payload",
+    "x": 680,
+    "y": 60,
+    "wires": []
+  },
+
+  {
+    "id": "ws_broadcast",
+    "type": "websocket out",
+    "z": "tab_iot_api",
+    "name": "WS Broadcast Sensor",
+    "server": "ws_server",
+    "client": "",
+    "x": 700,
+    "y": 100,
+    "wires": []
+  },
+
+  {
+    "id": "ws_notif",
+    "type": "websocket out",
+    "z": "tab_iot_api",
+    "name": "WS Notif Threshold",
+    "server": "ws_server",
+    "client": "",
+    "x": 700,
+    "y": 140,
+    "wires": []
+  },
+
+  {
+    "id": "mqtt_notif_out",
+    "type": "mqtt out",
+    "z": "tab_iot_api",
+    "name": "Publish iot/alert",
+    "topic": "iot/alert",
+    "qos": "0",
+    "retain": "false",
+    "broker": "mqtt_broker_cfg",
+    "x": 700,
+    "y": 180,
+    "wires": []
+  },
+
+  {
+    "id": "ws_server",
+    "type": "websocket-listener",
+    "path": "/ws/iot",
+    "wholemsg": "false"
+  },
+
+  {
+    "id": "node_comment_api",
+    "type": "comment",
+    "z": "tab_iot_api",
+    "name": "=== REST API: Middleware Auth ===",
+    "info": "",
+    "x": 200,
+    "y": 240,
+    "wires": []
+  },
+
+  {
+    "id": "fn_auth_middleware",
+    "type": "function",
+    "z": "tab_iot_api",
+    "name": "Auth Middleware (X-API-Key)",
+    "func": "// API Key yang valid (simpan di environment variable di production)\nvar VALID_API_KEYS = ['iot-secret-2024', 'dev-key-123'];\n\nvar apiKey = msg.req.headers['x-api-key'];\n\nif (!apiKey || !VALID_API_KEYS.includes(apiKey)) {\n    msg.statusCode = 401;\n    msg.payload = {\n        status: 'error',\n        message: 'Unauthorized: X-API-Key tidak valid atau tidak ada',\n        hint: 'Tambahkan header X-API-Key: iot-secret-2024'\n    };\n    msg.headers = {\n        'Access-Control-Allow-Origin': '*',\n        'Content-Type': 'application/json'\n    };\n    return [null, msg];\n}\n\n// Auth berhasil, lanjutkan ke handler\nreturn [msg, null];\n",
+    "outputs": 2,
+    "x": 430,
+    "y": 280,
+    "wires": [
+      [],
+      ["http_resp_auth_fail"]
+    ]
+  },
+
+  {
+    "id": "http_resp_auth_fail",
+    "type": "http response",
+    "z": "tab_iot_api",
+    "name": "Response Auth Fail",
+    "statusCode": "",
+    "headers": {},
+    "x": 700,
+    "y": 280,
+    "wires": []
+  },
+
+  {
+    "id": "node_comment_suhu",
+    "type": "comment",
+    "z": "tab_iot_api",
+    "name": "=== GET /api/suhu ===",
+    "info": "",
+    "x": 160,
+    "y": 340,
+    "wires": []
+  },
+
+  {
+    "id": "http_get_suhu",
+    "type": "http in",
+    "z": "tab_iot_api",
+    "name": "GET /api/suhu",
+    "url": "/api/suhu",
+    "method": "get",
+    "upload": false,
+    "x": 160,
+    "y": 380,
+    "wires": [["fn_auth_suhu"]]
+  },
+
+  {
+    "id": "fn_auth_suhu",
+    "type": "function",
+    "z": "tab_iot_api",
+    "name": "Auth Check",
+    "func": "var VALID_API_KEYS = ['iot-secret-2024', 'dev-key-123'];\nvar apiKey = msg.req.headers['x-api-key'];\nif (!apiKey || !VALID_API_KEYS.includes(apiKey)) {\n    msg.statusCode = 401;\n    msg.payload = { status: 'error', message: 'Unauthorized: Header X-API-Key diperlukan' };\n    msg.headers = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' };\n    return [null, msg];\n}\nreturn [msg, null];",
+    "outputs": 2,
+    "x": 360,
+    "y": 380,
+    "wires": [["fn_resp_suhu"], ["http_resp_suhu"]]
+  },
+
+  {
+    "id": "fn_resp_suhu",
+    "type": "function",
+    "z": "tab_iot_api",
+    "name": "Build Response Suhu",
+    "func": "var data = flow.get('lastSensor') || { suhu: null, kelembaban: null, led: null, timestamp: null };\nvar threshold = flow.get('threshold') || null;\n\nmsg.payload = {\n    status: 'success',\n    data: data,\n    threshold: threshold,\n    alert: threshold !== null && data.suhu !== null && data.suhu > threshold,\n    server_time: new Date().toISOString()\n};\nmsg.headers = {\n    'Access-Control-Allow-Origin': '*',\n    'Content-Type': 'application/json'\n};\nreturn msg;",
+    "outputs": 1,
+    "x": 560,
+    "y": 360,
+    "wires": [["http_resp_suhu"]]
+  },
+
+  {
+    "id": "http_resp_suhu",
+    "type": "http response",
+    "z": "tab_iot_api",
+    "name": "",
+    "statusCode": "200",
+    "headers": {},
+    "x": 760,
+    "y": 380,
+    "wires": []
+  },
+
+  {
+    "id": "node_comment_history",
+    "type": "comment",
+    "z": "tab_iot_api",
+    "name": "=== GET /api/history ===",
+    "info": "",
+    "x": 160,
+    "y": 440,
+    "wires": []
+  },
+
+  {
+    "id": "http_get_history",
+    "type": "http in",
+    "z": "tab_iot_api",
+    "name": "GET /api/history",
+    "url": "/api/history",
+    "method": "get",
+    "upload": false,
+    "x": 160,
+    "y": 480,
+    "wires": [["fn_auth_history"]]
+  },
+
+  {
+    "id": "fn_auth_history",
+    "type": "function",
+    "z": "tab_iot_api",
+    "name": "Auth Check",
+    "func": "var VALID_API_KEYS = ['iot-secret-2024', 'dev-key-123'];\nvar apiKey = msg.req.headers['x-api-key'];\nif (!apiKey || !VALID_API_KEYS.includes(apiKey)) {\n    msg.statusCode = 401;\n    msg.payload = { status: 'error', message: 'Unauthorized: Header X-API-Key diperlukan' };\n    msg.headers = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' };\n    return [null, msg];\n}\nreturn [msg, null];",
+    "outputs": 2,
+    "x": 360,
+    "y": 480,
+    "wires": [["fn_resp_history"], ["http_resp_history"]]
+  },
+
+  {
+    "id": "fn_resp_history",
+    "type": "function",
+    "z": "tab_iot_api",
+    "name": "Build Response History",
+    "func": "var history = flow.get('history') || [];\nvar limit = parseInt(msg.req.query.limit) || 50;\nvar data = history.slice(-limit);\n\nmsg.payload = {\n    status: 'success',\n    count: data.length,\n    limit: limit,\n    data: data\n};\nmsg.headers = {\n    'Access-Control-Allow-Origin': '*',\n    'Content-Type': 'application/json'\n};\nreturn msg;",
+    "outputs": 1,
+    "x": 560,
+    "y": 460,
+    "wires": [["http_resp_history"]]
+  },
+
+  {
+    "id": "http_resp_history",
+    "type": "http response",
+    "z": "tab_iot_api",
+    "name": "",
+    "statusCode": "200",
+    "headers": {},
+    "x": 760,
+    "y": 480,
+    "wires": []
+  },
+
+  {
+    "id": "node_comment_kontrol",
+    "type": "comment",
+    "z": "tab_iot_api",
+    "name": "=== POST /api/kontrol ===",
+    "info": "",
+    "x": 160,
+    "y": 540,
+    "wires": []
+  },
+
+  {
+    "id": "http_post_kontrol",
+    "type": "http in",
+    "z": "tab_iot_api",
+    "name": "POST /api/kontrol",
+    "url": "/api/kontrol",
+    "method": "post",
+    "upload": false,
+    "x": 160,
+    "y": 580,
+    "wires": [["fn_auth_kontrol"]]
+  },
+
+  {
+    "id": "fn_auth_kontrol",
+    "type": "function",
+    "z": "tab_iot_api",
+    "name": "Auth Check",
+    "func": "var VALID_API_KEYS = ['iot-secret-2024', 'dev-key-123'];\nvar apiKey = msg.req.headers['x-api-key'];\nif (!apiKey || !VALID_API_KEYS.includes(apiKey)) {\n    msg.statusCode = 401;\n    msg.payload = { status: 'error', message: 'Unauthorized: Header X-API-Key diperlukan' };\n    msg.headers = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' };\n    return [null, msg];\n}\nreturn [msg, null];",
+    "outputs": 2,
+    "x": 360,
+    "y": 580,
+    "wires": [["fn_proc_kontrol"], ["http_resp_kontrol"]]
+  },
+
+  {
+    "id": "fn_proc_kontrol",
+    "type": "function",
+    "z": "tab_iot_api",
+    "name": "Validasi & Publish Kontrol",
+    "func": "var body = msg.payload;\n\nif (!body.device || !body.action) {\n    msg.statusCode = 400;\n    msg.payload = {\n        status: 'error',\n        message: 'Field \"device\" dan \"action\" wajib diisi'\n    };\n    msg.headers = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' };\n    return [msg, null];\n}\n\nvar validDevices = ['lamp', 'fan', 'pump'];\nvar validActions = ['on', 'off', 'toggle'];\n\nif (!validDevices.includes(body.device)) {\n    msg.statusCode = 400;\n    msg.payload = { status: 'error', message: 'Device tidak dikenal: ' + body.device };\n    msg.headers = { 'Access-Control-Allow-Origin': '*' };\n    return [msg, null];\n}\n\n// Publish ke MQTT\nvar mqttMsg = {\n    payload: JSON.stringify(body),\n    topic: 'iot/kontrol'\n};\n\nmsg.statusCode = 200;\nmsg.payload = {\n    status: 'success',\n    message: 'Perintah berhasil dikirim',\n    sent: body,\n    timestamp: new Date().toISOString()\n};\nmsg.headers = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' };\n\nreturn [msg, mqttMsg];",
+    "outputs": 2,
+    "x": 580,
+    "y": 560,
+    "wires": [
+      ["http_resp_kontrol"],
+      ["mqtt_publish_kontrol"]
+    ]
+  },
+
+  {
+    "id": "http_resp_kontrol",
+    "type": "http response",
+    "z": "tab_iot_api",
+    "name": "",
+    "x": 820,
+    "y": 580,
+    "wires": []
+  },
+
+  {
+    "id": "mqtt_publish_kontrol",
+    "type": "mqtt out",
+    "z": "tab_iot_api",
+    "name": "Publish iot/kontrol",
+    "topic": "",
+    "qos": "0",
+    "retain": "false",
+    "broker": "mqtt_broker_cfg",
+    "x": 820,
+    "y": 620,
+    "wires": []
+  },
+
+  {
+    "id": "node_comment_threshold",
+    "type": "comment",
+    "z": "tab_iot_api",
+    "name": "=== PUT /api/threshold (NILAI TAMBAH) ===",
+    "info": "",
+    "x": 190,
+    "y": 660,
+    "wires": []
+  },
+
+  {
+    "id": "http_put_threshold",
+    "type": "http in",
+    "z": "tab_iot_api",
+    "name": "PUT /api/threshold",
+    "url": "/api/threshold",
+    "method": "put",
+    "upload": false,
+    "x": 160,
+    "y": 700,
+    "wires": [["fn_auth_threshold"]]
+  },
+
+  {
+    "id": "fn_auth_threshold",
+    "type": "function",
+    "z": "tab_iot_api",
+    "name": "Auth Check",
+    "func": "var VALID_API_KEYS = ['iot-secret-2024', 'dev-key-123'];\nvar apiKey = msg.req.headers['x-api-key'];\nif (!apiKey || !VALID_API_KEYS.includes(apiKey)) {\n    msg.statusCode = 401;\n    msg.payload = { status: 'error', message: 'Unauthorized: Header X-API-Key diperlukan' };\n    msg.headers = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' };\n    return [null, msg];\n}\nreturn [msg, null];",
+    "outputs": 2,
+    "x": 360,
+    "y": 700,
+    "wires": [["fn_proc_threshold"], ["http_resp_threshold"]]
+  },
+
+  {
+    "id": "fn_proc_threshold",
+    "type": "function",
+    "z": "tab_iot_api",
+    "name": "Set Threshold",
+    "func": "var body = msg.payload;\n\nif (body.threshold === undefined || body.threshold === null) {\n    msg.statusCode = 400;\n    msg.payload = { status: 'error', message: 'Field \"threshold\" (angka) wajib diisi' };\n    msg.headers = { 'Access-Control-Allow-Origin': '*' };\n    return msg;\n}\n\nvar nilai = parseFloat(body.threshold);\nif (isNaN(nilai) || nilai < 0 || nilai > 100) {\n    msg.statusCode = 400;\n    msg.payload = { status: 'error', message: 'Threshold harus angka antara 0-100' };\n    msg.headers = { 'Access-Control-Allow-Origin': '*' };\n    return msg;\n}\n\nflow.set('threshold', nilai);\n\nmsg.statusCode = 200;\nmsg.payload = {\n    status: 'success',\n    message: 'Threshold berhasil diperbarui',\n    threshold: nilai,\n    unit: '°C',\n    updated_at: new Date().toISOString()\n};\nmsg.headers = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' };\nreturn msg;",
+    "outputs": 1,
+    "x": 560,
+    "y": 700,
+    "wires": [["http_resp_threshold"]]
+  },
+
+  {
+    "id": "http_resp_threshold",
+    "type": "http response",
+    "z": "tab_iot_api",
+    "name": "",
+    "x": 760,
+    "y": 700,
+    "wires": []
+  },
+
+  {
+    "id": "http_get_threshold",
+    "type": "http in",
+    "z": "tab_iot_api",
+    "name": "GET /api/threshold",
+    "url": "/api/threshold",
+    "method": "get",
+    "upload": false,
+    "x": 160,
+    "y": 760,
+    "wires": [["fn_get_threshold"]]
+  },
+
+  {
+    "id": "fn_get_threshold",
+    "type": "function",
+    "z": "tab_iot_api",
+    "name": "Get Threshold",
+    "func": "var VALID_API_KEYS = ['iot-secret-2024', 'dev-key-123'];\nvar apiKey = msg.req.headers['x-api-key'];\nif (!apiKey || !VALID_API_KEYS.includes(apiKey)) {\n    msg.statusCode = 401;\n    msg.payload = { status: 'error', message: 'Unauthorized' };\n    msg.headers = { 'Access-Control-Allow-Origin': '*' };\n    return msg;\n}\nvar threshold = flow.get('threshold');\nmsg.payload = {\n    status: 'success',\n    threshold: threshold !== undefined ? threshold : null,\n    unit: '°C'\n};\nmsg.headers = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' };\nreturn msg;",
+    "outputs": 1,
+    "x": 400,
+    "y": 760,
+    "wires": [["http_resp_threshold_get"]]
+  },
+
+  {
+    "id": "http_resp_threshold_get",
+    "type": "http response",
+    "z": "tab_iot_api",
+    "name": "",
+    "x": 620,
+    "y": 760,
+    "wires": []
+  },
+
+  {
+    "id": "node_comment_cors",
+    "type": "comment",
+    "z": "tab_iot_api",
+    "name": "=== OPTIONS: CORS Preflight ===",
+    "info": "",
+    "x": 180,
+    "y": 820,
+    "wires": []
+  },
+
+  {
+    "id": "http_options_cors",
+    "type": "http in",
+    "z": "tab_iot_api",
+    "name": "OPTIONS /api/*",
+    "url": "/api/*",
+    "method": "options",
+    "upload": false,
+    "x": 160,
+    "y": 860,
+    "wires": [["fn_cors"]]
+  },
+
+  {
+    "id": "fn_cors",
+    "type": "function",
+    "z": "tab_iot_api",
+    "name": "CORS Headers",
+    "func": "msg.statusCode = 204;\nmsg.payload = '';\nmsg.headers = {\n    'Access-Control-Allow-Origin': '*',\n    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',\n    'Access-Control-Allow-Headers': 'Content-Type, X-API-Key',\n    'Access-Control-Max-Age': '86400'\n};\nreturn msg;",
+    "outputs": 1,
+    "x": 380,
+    "y": 860,
+    "wires": [["http_resp_cors"]]
+  },
+
+  {
+    "id": "http_resp_cors",
+    "type": "http response",
+    "z": "tab_iot_api",
+    "name": "",
+    "x": 560,
+    "y": 860,
+    "wires": []
+  }
+]
